@@ -445,7 +445,27 @@
   .btn-modal-confirm:hover { background: #1648c7; }
   .btn-modal-confirm:disabled { opacity: .4; cursor: default; }
 
-  /* toast */
+  .candidate-row.skipped {
+    opacity: .38;
+    cursor: default;
+    pointer-events: none;
+  }
+  .candidate-row.skipped .c-name { text-decoration: line-through; }
+  .candidate-row.skipped .undo-skip-btn { pointer-events: all; cursor: pointer; }
+  .group-skipped {
+    opacity: .55;
+    border-style: dashed !important;
+  }
+  .group-skip-label {
+    font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+    background: var(--gray-100); color: var(--gray-500); border: 1px solid var(--gray-200);
+  }
+  .skip-action-btn {
+    font-size: 11px; color: var(--gray-400); background: none;
+    border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
+    padding: 3px 8px; cursor: pointer; transition: all .15s;
+  }
+  .skip-action-btn:hover { background: var(--gray-100); color: var(--gray-600); }
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
     background: var(--gray-900); color: white; font-size: 13px; font-weight: 500;
@@ -633,11 +653,13 @@ let S = {
   actions: [],
   confirmed: [],
   openGroups: [0, 1, 2],
-  editing: null,       // {gi, ci}
-  editVals: {},        // key: `${gi}-${ci}`
-  customVals: {},      // key: gi
-  selectedCandidates: {}, // key: gi => ci
+  editing: null,
+  editVals: {},
+  customVals: {},
+  selectedCandidates: {},
   skipped: false,
+  skippedCandidates: {},  // { gi: Set<ci> }
+  skippedGroups: new Set(),
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -748,18 +770,37 @@ function render() {
   }
 
   let html = '';
-  const pending = S.actions.filter(a => !a.confirmed).length;
+  const pending = S.actions.filter((a, i) => !a.confirmed && !S.skippedGroups.has(i)).length;
   html += `<div class="section-label">Detected actions — ${pending} pending</div>`;
 
   S.actions.forEach((action, gi) => {
     const isOpen = S.openGroups.includes(gi);
     const isDone = !!action.confirmed;
+    const isGroupSkipped = S.skippedGroups.has(gi);
+    const skippedCands = S.skippedCandidates[gi] || new Set();
+    const activeCount = action.candidates.filter((_, ci) => !skippedCands.has(ci)).length;
+
+    // Group skipped state
+    if (isGroupSkipped) {
+      html += `<div class="action-group group-skipped">
+        <div class="action-header" onclick="toggleGroup(${gi})">
+          <div class="action-dot" style="background:var(--gray-300)"></div>
+          <span class="action-label-text" style="text-decoration:line-through;color:var(--gray-400)">${action.label}</span>
+          <span class="group-skip-label">SKIPPED</span>
+          <button class="skip-action-btn" style="pointer-events:all" onclick="event.stopPropagation();unskipGroup(${gi})">Undo</button>
+          <span class="chevron ${isOpen?'open':''}">▼</span>
+        </div>
+        ${isOpen ? `<div style="padding:6px 14px 10px"><span style="font-size:12px;color:var(--gray-400)">This action group was skipped. Click Undo to restore it.</span></div>` : ''}
+      </div>`;
+      return;
+    }
 
     html += `<div class="action-group">
       <div class="action-header" onclick="toggleGroup(${gi})">
         <div class="action-dot ${isDone?'done':''}"></div>
         <span class="action-label-text">${action.label}</span>
-        ${isDone ? `<span class="done-pill">DONE</span>` : ''}
+        ${skippedCands.size > 0 && !isDone ? `<span style="font-size:11px;color:var(--gray-400)">(${activeCount}/${action.candidates.length} active)</span>` : ''}
+        ${isDone ? `<span class="done-pill">DONE</span>` : `<button class="skip-action-btn" onclick="event.stopPropagation();skipGroup(${gi})">Skip action</button>`}
         <span class="chevron ${isOpen?'open':''}">▼</span>
       </div>`;
 
@@ -893,7 +934,27 @@ function renderSummary() {
 }
 
 // ── Interactions ────────────────────────────────────────────────────────────
-function toggleGroup(gi) {
+function skipCandidate(gi, ci) {
+  if (!S.skippedCandidates[gi]) S.skippedCandidates[gi] = new Set();
+  S.skippedCandidates[gi].add(ci);
+  if (S.selectedCandidates[gi] === ci) S.selectedCandidates[gi] = undefined;
+  render();
+  showToast(`Candidate skipped`, () => unskipCandidate(gi, ci));
+}
+function unskipCandidate(gi, ci) {
+  if (S.skippedCandidates[gi]) S.skippedCandidates[gi].delete(ci);
+  render();
+}
+function skipGroup(gi) {
+  S.skippedGroups.add(gi);
+  S.selectedCandidates[gi] = undefined;
+  render();
+  showToast(`Action skipped`, () => unskipGroup(gi));
+}
+function unskipGroup(gi) {
+  S.skippedGroups.delete(gi);
+  render();
+}
   const idx = S.openGroups.indexOf(gi);
   if (idx === -1) S.openGroups.push(gi);
   else S.openGroups.splice(idx, 1);
