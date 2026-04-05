@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NameGen — PostHog Event Name Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue:       #1A56DB;
+    --blue-light: #EBF2FF;
+    --blue-text:  #1e429f;
+    --green:      #0E7C4A;
+    --green-light:#ECFDF5;
+    --green-text: #065f46;
+    --amber:      #D97706;
+    --amber-light:#FFF8E7;
+    --amber-text: #92400e;
+    --red:        #DC2626;
+    --red-light:  #FEF2F2;
+    --red-text:   #991b1b;
+    --purple:     #7C3AED;
+    --purple-light:#EEEDFE;
+    --purple-text: #3C3489;
+    --teal:       #0F6E56;
+    --teal-light: #E1F5EE;
+    --teal-text:  #085041;
+    --gray-50:    #F9FAFB;
+    --gray-100:   #F3F4F6;
+    --gray-200:   #E5E7EB;
+    --gray-300:   #D1D5DB;
+    --gray-400:   #9CA3AF;
+    --gray-500:   #6B7280;
+    --gray-600:   #4B5563;
+    --gray-700:   #374151;
+    --gray-800:   #1F2937;
+    --gray-900:   #111827;
+    --radius-sm:  6px;
+    --radius-md:  8px;
+    --radius-lg:  12px;
+    --shadow-sm:  0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-md:  0 4px 12px rgba(0,0,0,.1), 0 2px 4px rgba(0,0,0,.06);
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  body {
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--gray-800);
+    background: #F0F2F5;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .app-shell {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    grid-template-rows: 56px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .topbar {
+    grid-column: 1/-1;
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .topbar-logo {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: -.02em;
+  }
+  .topbar-divider { width: 1px; height: 20px; background: var(--gray-200); }
+  .topbar-ticket {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--blue-text);
+    background: var(--blue-light);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+  .topbar-title {
+    font-size: 13px;
+    color: var(--gray-600);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-badge {
+    font-size: 11px;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--gray-200);
+  }
+
+  /* ── Jira mock ── */
+  .jira-mock {
+    background: white;
+    overflow-y: auto;
+    padding: 32px 40px;
+    border-right: 1px solid var(--gray-200);
+  }
+  .jira-issue-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: 20px;
+    line-height: 1.3;
+  }
+  .jira-field-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .jira-field-label { font-size: 12px; color: var(--gray-500); width: 100px; flex-shrink: 0; }
+  .jira-field-value { font-size: 13px; color: var(--gray-700); }
+  .jira-type-badge {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 3px;
+    background: #E8F4FE; color: #0052CC; border: 1px solid #B3D4FF;
+  }
+  .jira-label-badge {
+    font-size: 11px; padding: 2px 7px; border-radius: 3px;
+    background: var(--gray-100); color: var(--gray-600); border: 1px solid var(--gray-200);
+  }
+  .jira-description {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-100);
+  }
+  .jira-description h4 { font-size: 12px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+  .jira-description p { font-size: 13px; color: var(--gray-700); line-height: 1.7; margin-bottom: 8px; }
+  .jira-ac { margin-top: 14px; }
+  .jira-ac-item { font-size: 13px; color: var(--gray-700); padding: 5px 0 5px 16px; position: relative; }
+  .jira-ac-item::before { content: '✓'; position: absolute; left: 0; color: var(--green); font-size: 11px; top: 6px; }
+  .jira-comments { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--gray-100); }
+  .jira-comments h4 { font-size: 12px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+  .jira-comment {
+    display: flex; gap: 10px; margin-bottom: 12px;
+  }
+  .jira-comment-avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--blue-light);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: var(--blue-text); flex-shrink: 0;
+  }
+  .jira-comment-body {
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md); padding: 8px 12px; flex: 1;
+    font-size: 12px; color: var(--gray-700); line-height: 1.6;
+  }
+  .namegen-comment {
+    background: #F0F7FF; border-color: #BFDBFE;
+  }
+  .namegen-comment-tag { font-weight: 700; color: var(--blue); }
+  .namegen-comment-code {
+    font-family: var(--mono); font-size: 11px;
+    background: white; padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--gray-200); color: var(--blue-text);
+  }
+
+  /* ── NameGen Panel ── */
+  .namegen-panel {
+    background: var(--gray-50);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-header {
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .panel-header-left { display: flex; align-items: center; gap: 8px; }
+  .panel-logo { font-size: 14px; font-weight: 700; color: var(--blue); }
+  .panel-story-badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    background: var(--green-light); color: var(--green-text); font-weight: 600;
+  }
+  .panel-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+
+  .skip-btn {
+    font-size: 11px; color: var(--gray-500); background: none;
+    border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
+    padding: 4px 10px; cursor: pointer; transition: all .15s;
+  }
+  .skip-btn:hover { background: var(--gray-100); color: var(--gray-700); }
+
+  /* scanning */
+  .scanning-state { text-align: center; padding: 32px 16px; color: var(--gray-500); }
+  .scanning-icon { font-size: 28px; margin-bottom: 12px; animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+  .scanning-text { font-size: 13px; margin-bottom: 6px; }
+  .scanning-sub { font-size: 11px; color: var(--gray-400); }
+
+  /* section label */
+  .section-label {
+    font-size: 10px; font-weight: 600; color: var(--gray-400);
+    text-transform: uppercase; letter-spacing: .06em; padding: 2px 4px;
+  }
+
+  /* posthog unavail */
+  .posthog-warn {
+    background: var(--amber-light); border: 1px solid #FDE68A; border-radius: var(--radius-md);
+    padding: 8px 12px; font-size: 11px; color: var(--amber-text);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* action group */
+  .action-group {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow .2s;
+  }
+  .action-group:hover { box-shadow: var(--shadow-md); }
+  .action-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 14px; cursor: pointer;
+    transition: background .1s; user-select: none;
+  }
+  .action-header:hover { background: var(--gray-50); }
+  .action-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    background: var(--blue);
+  }
+  .action-dot.done { background: var(--green); }
+  .action-dot.pending { background: var(--amber); }
+  .action-label-text { font-size: 13px; font-weight: 500; flex: 1; line-height: 1.3; }
+  .done-pill {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+    background: var(--green-light); color: var(--green-text);
+  }
+  .chevron { font-size: 9px; color: var(--gray-400); transition: transform .2s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  /* candidates */
+  .candidates-body { padding: 4px 8px 8px; }
+  .candidate-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 6px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background .1s;
+  }
+  .candidate-row:hover { background: var(--gray-50); }
+  .candidate-row.selected { background: #EFF6FF; }
+  .c-radio {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 1.5px solid var(--gray-300); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .1s;
+  }
+  .candidate-row.selected .c-radio { border-color: var(--blue); background: var(--blue); }
+  .c-radio-dot { width: 5px; height: 5px; border-radius: 50%; background: white; display: none; }
+  .candidate-row.selected .c-radio-dot { display: block; }
+  .c-name { font-family: var(--mono); font-size: 11.5px; flex: 1; color: var(--gray-800); word-break: break-all; }
+  .edit-icon-btn {
+    font-size: 11px; color: var(--gray-400); background: none; border: none;
+    cursor: pointer; padding: 2px 5px; border-radius: 3px; flex-shrink: 0;
+  }
+  .edit-icon-btn:hover { color: var(--gray-600); background: var(--gray-100); }
+
+  /* badges */
+  .badge {
+    font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .badge-unique    { background: var(--green-light); color: var(--green-text); }
+  .badge-similar   { background: var(--amber-light); color: var(--amber-text); }
+  .badge-duplicate { background: var(--red-light);   color: var(--red-text); }
+  .badge-checking  { background: var(--gray-100);    color: var(--gray-400); }
+  .badge-edited    { background: var(--purple-light); color: var(--purple-text); }
+  .badge-custom    { background: var(--teal-light);  color: var(--teal-text); }
+
+  /* edit input */
+  .edit-wrap { padding: 4px 6px 8px; }
+  .ac-wrap { position: relative; }
+  .edit-input {
+    width: 100%; font-family: var(--mono); font-size: 12px;
+    padding: 7px 10px; border: 1.5px solid var(--gray-300);
+    border-radius: var(--radius-sm); background: white; color: var(--gray-800);
+    outline: none; transition: border-color .15s;
+  }
+  .edit-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.1); }
+  .edit-input.err   { border-color: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.08); }
+  .inline-error { font-size: 11px; color: var(--red-text); padding: 3px 2px 0; }
+  .unknown-cat-warn { font-size: 11px; color: var(--amber-text); padding: 3px 2px 0; }
+  .live-badge-row { padding: 3px 2px 0; }
+  .edit-actions { display: flex; gap: 6px; margin-top: 7px; }
+  .btn-cancel {
+    font-size: 11px; padding: 4px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-200); background: white; color: var(--gray-500);
+    cursor: pointer;
+  }
+  .btn-cancel:hover { background: var(--gray-50); }
+  .btn-apply {
+    font-size: 11px; padding: 4px 12px; border-radius: var(--radius-sm);
+    border: none; background: var(--blue); color: white; cursor: pointer; font-weight: 500;
+  }
+  .btn-apply:hover { background: #1648c7; }
+  .btn-apply:disabled { opacity: .4; cursor: default; }
+
+  /* autocomplete */
+  .ac-dropdown {
+    position: absolute; top: calc(100% + 3px); left: 0; right: 0;
+    background: white; border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md); overflow: hidden;
+    box-shadow: var(--shadow-md); z-index: 50;
+  }
+  .ac-item {
+    padding: 7px 12px; cursor: pointer; display: flex; gap: 8px; align-items: baseline;
+    transition: background .1s;
+  }
+  .ac-item:hover, .ac-item.focused { background: var(--blue-light); }
+  .ac-item-name { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--blue-text); }
+  .ac-item-domain { font-size: 10px; color: var(--gray-400); }
+  .ac-item-desc { font-size: 10px; color: var(--gray-400); flex: 1; }
+  .ac-footer {
+    padding: 5px 12px; border-top: 1px solid var(--gray-100);
+    font-size: 10px; color: var(--blue); cursor: pointer;
+  }
+  .ac-footer:hover { text-decoration: underline; }
+
+  /* regen + custom */
+  .regen-btn {
+    font-size: 11px; color: var(--gray-500); background: none;
+    border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
+    padding: 4px 10px; cursor: pointer; margin: 4px 6px 2px;
+    transition: all .15s;
+  }
+  .regen-btn:hover { background: var(--gray-100); color: var(--gray-700); }
+  .custom-section {
+    padding: 8px 8px 10px;
+    border-top: 1px solid var(--gray-100);
+    margin-top: 2px;
+  }
+  .custom-label { font-size: 11px; color: var(--gray-400); margin-bottom: 5px; }
+
+  /* confirm strip */
+  .confirm-strip { padding: 4px 8px 10px; }
+  .confirm-main-btn {
+    width: 100%; padding: 8px; background: var(--blue); color: white;
+    border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+  }
+  .confirm-main-btn:hover { background: #1648c7; }
+  .confirm-main-btn:disabled { opacity: .4; cursor: default; background: var(--gray-300); }
+
+  /* done group confirmed name */
+  .confirmed-name-row {
+    padding: 8px 14px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .confirmed-mono { font-family: var(--mono); font-size: 12px; color: var(--green-text); font-weight: 600; }
+
+  /* summary */
+  .summary-panel {
+    background: white; border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  }
+  .summary-header {
+    padding: 10px 14px; border-bottom: 1px solid var(--gray-100);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .summary-title { font-size: 12px; font-weight: 600; color: var(--gray-600); }
+  .summary-count {
+    font-size: 11px; background: var(--gray-100); color: var(--gray-500);
+    padding: 1px 7px; border-radius: 10px; font-weight: 600;
+  }
+  .summary-body { padding: 8px 14px 10px; }
+  .summary-empty { font-size: 12px; color: var(--gray-400); text-align: center; padding: 10px 0; }
+  .summary-item { padding: 7px 0; border-bottom: 1px solid var(--gray-100); }
+  .summary-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .summary-item-name { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--gray-800); }
+  .summary-item-meta { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+
+  /* skipped */
+  .skipped-panel {
+    background: white; border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg); padding: 24px 16px; text-align: center;
+    box-shadow: var(--shadow-sm);
+  }
+  .skipped-icon { font-size: 24px; margin-bottom: 8px; }
+  .skipped-text { font-size: 13px; color: var(--gray-500); margin-bottom: 8px; }
+  .undo-link {
+    font-size: 12px; color: var(--blue); background: none; border: none;
+    cursor: pointer; text-decoration: underline;
+  }
+
+  /* modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+    animation: fade-in .15s ease;
+  }
+  @keyframes fade-in { from{opacity:0} to{opacity:1} }
+  .modal {
+    background: white; border-radius: var(--radius-lg);
+    padding: 24px; width: 360px; max-width: 90vw;
+    box-shadow: var(--shadow-md);
+    animation: slide-up .15s ease;
+  }
+  @keyframes slide-up { from{transform:translateY(8px);opacity:0} to{transform:none;opacity:1} }
+  .modal-title { font-size: 15px; font-weight: 600; color: var(--gray-900); margin-bottom: 14px; }
+  .modal-event-name {
+    font-family: var(--mono); font-size: 13px; background: var(--gray-50);
+    border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
+    padding: 8px 12px; margin: 0 0 10px; word-break: break-all; color: var(--blue-text);
+  }
+  .modal-meta { font-size: 12px; color: var(--gray-500); margin-bottom: 16px; line-height: 1.7; }
+  .dup-warning-box {
+    background: var(--red-light); border: 1px solid #FECACA;
+    border-radius: var(--radius-sm); padding: 10px 12px;
+    font-size: 12px; color: var(--red-text); margin-bottom: 10px;
+  }
+  .dup-ack-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 12px; color: var(--gray-700); margin-bottom: 16px; cursor: pointer;
+  }
+  .dup-ack-row input { margin-top: 2px; accent-color: var(--blue); }
+  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn-modal-cancel {
+    padding: 7px 16px; border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-200); background: white;
+    font-size: 13px; color: var(--gray-600); cursor: pointer;
+  }
+  .btn-modal-cancel:hover { background: var(--gray-50); }
+  .btn-modal-confirm {
+    padding: 7px 16px; border-radius: var(--radius-sm);
+    border: none; background: var(--blue); color: white;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn-modal-confirm:hover { background: #1648c7; }
+  .btn-modal-confirm:disabled { opacity: .4; cursor: default; }
+
+  /* toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--gray-900); color: white; font-size: 13px; font-weight: 500;
+    padding: 10px 20px; border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+    z-index: 300; display: flex; align-items: center; gap: 8px;
+    animation: toast-in .2s ease; pointer-events: none;
+  }
+  @keyframes toast-in { from{opacity:0;transform:translateX(-50%) translateY(8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+  .toast-check { color: #4ade80; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <span class="topbar-logo">NameGen</span>
+    <div class="topbar-divider"></div>
+    <span class="topbar-ticket">PROD-142</span>
+    <span class="topbar-title">Build export report feature — allow users to select format and download</span>
+    <span class="topbar-badge">Story</span>
+  </div>
+
+  <!-- Jira mock -->
+  <div class="jira-mock">
+    <h1 class="jira-issue-title">Build export report feature — allow users to select format and download</h1>
+
+    <div class="jira-field-row">
+      <span class="jira-field-label">Type</span>
+      <span class="jira-type-badge">Story</span>
+    </div>
+    <div class="jira-field-row">
+      <span class="jira-field-label">Assignee</span>
+      <span class="jira-field-value">maya@company.com</span>
+    </div>
+    <div class="jira-field-row">
+      <span class="jira-field-label">Labels</span>
+      <span class="jira-label-badge">analytics</span>
+      <span class="jira-label-badge">export</span>
+      <span class="jira-label-badge">q2-2026</span>
+    </div>
+    <div class="jira-field-row">
+      <span class="jira-field-label">Component</span>
+      <span class="jira-field-value">Reports</span>
+    </div>
+
+    <div class="jira-description">
+      <h4>Description</h4>
+      <p>As a user, I want to export report data in my preferred format (CSV, PDF, or Excel) so that I can analyse it outside the platform or share it with stakeholders.</p>
+      <p>The export flow should allow me to select the format, trigger the export job, and receive a download link or direct file download when the job is complete.</p>
+      <div class="jira-ac">
+        <h4 style="margin-bottom:8px">Acceptance Criteria</h4>
+        <div class="jira-ac-item">User can select export format from CSV, PDF, Excel</div>
+        <div class="jira-ac-item">Export job is triggered on confirmation</div>
+        <div class="jira-ac-item">Download begins automatically on job completion</div>
+        <div class="jira-ac-item">Error state shown if export fails</div>
+        <div class="jira-ac-item">Export button is disabled while a job is in progress</div>
+      </div>
+    </div>
+
+    <div class="jira-comments" id="jira-comments">
+      <h4>Comments</h4>
+      <div id="comments-list">
+        <div class="jira-comment">
+          <div class="jira-comment-avatar">MR</div>
+          <div class="jira-comment-body">
+            Added analytics label — this needs PostHog events before handoff to eng.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NameGen Panel -->
+  <div class="namegen-panel">
+    <div class="panel-header">
+      <div class="panel-header-left">
+        <span class="panel-logo">NameGen</span>
+        <span class="panel-story-badge">Story</span>
+      </div>
+      <button class="skip-btn" onclick="handleSkip()">Not applicable</button>
+    </div>
+    <div class="panel-body" id="panel-body">
+      <!-- rendered by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- Modal container -->
+<div id="modal-root"></div>
+
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────
+const CATEGORIES = [
+  {name:'auth',domain:'Auth',description:'Login, logout, session'},
+  {name:'login_flow',domain:'Auth',description:'Login process steps'},
+  {name:'signup_flow',domain:'Auth',description:'New user registration'},
+  {name:'account_settings',domain:'Auth',description:'Account configuration'},
+  {name:'navigation',domain:'Navigation',description:'Page transitions and menus'},
+  {name:'onboarding',domain:'Navigation',description:'First-time user guidance'},
+  {name:'dashboard',domain:'Navigation',description:'Dashboard interactions'},
+  {name:'checkout',domain:'Commerce',description:'Purchase and payment flows'},
+  {name:'cart',domain:'Commerce',description:'Shopping cart interactions'},
+  {name:'payments',domain:'Commerce',description:'Payment processing events'},
+  {name:'orders',domain:'Commerce',description:'Order management events'},
+  {name:'feed',domain:'Content',description:'Content feed browsing'},
+  {name:'editor',domain:'Content',description:'Content creation actions'},
+  {name:'notifications',domain:'Content',description:'Notification interactions'},
+  {name:'search',domain:'Content',description:'Search queries and results'},
+  {name:'settings',domain:'Settings',description:'Application settings changes'},
+  {name:'profile',domain:'Settings',description:'User profile updates'},
+  {name:'integrations',domain:'Settings',description:'Third-party integrations'},
+  {name:'billing',domain:'Settings',description:'Billing and subscription'},
+  {name:'export',domain:'Data',description:'Data export and downloads'},
+  {name:'reports',domain:'Data',description:'Report generation and viewing'},
+  {name:'analytics',domain:'Data',description:'Analytics feature interactions'},
+];
+
+const POSTHOG_EVENTS = [
+  'export:report_started','auth:login_failed','checkout:order_completed',
+  'reports:export_trigger','export:download_initiated',
+];
+
+const INITIAL_ACTIONS = [
+  {
+    label: 'User initiates report export',
+    candidates: [
+      {name:'export:report_download_started', status:'unique', origin:'AI-generated'},
+      {name:'export:download_initiated',      status:'similar', matchedEvent:'export:download_initiated', origin:'AI-generated'},
+      {name:'reports:export_triggered',       status:'similar', matchedEvent:'reports:export_trigger',   origin:'AI-generated'},
+      {name:'export:file_generation_started', status:'unique', origin:'AI-generated'},
+      {name:'reports:download_button_clicked',status:'unique', origin:'AI-generated'},
+    ]
+  },
+  {
+    label: 'User selects export format',
+    candidates: [
+      {name:'export:format_selected',        status:'unique', origin:'AI-generated'},
+      {name:'export:file_type_chosen',       status:'unique', origin:'AI-generated'},
+      {name:'reports:format_picker_changed', status:'unique', origin:'AI-generated'},
+      {name:'export:output_format_set',      status:'unique', origin:'AI-generated'},
+      {name:'reports:export_type_confirmed', status:'unique', origin:'AI-generated'},
+    ]
+  },
+  {
+    label: 'Export download completes',
+    candidates: [
+      {name:'export:download_completed',  status:'unique', origin:'AI-generated'},
+      {name:'reports:export_finished',    status:'unique', origin:'AI-generated'},
+      {name:'export:file_downloaded',     status:'unique', origin:'AI-generated'},
+      {name:'reports:download_succeeded', status:'unique', origin:'AI-generated'},
+      {name:'export:report_generated',    status:'unique', origin:'AI-generated'},
+    ]
+  },
+];
+
+const REGEN_BATCHES = [
+  [
+    {name:'export:report_export_triggered',   status:'unique', origin:'AI-generated'},
+    {name:'export:batch_download_started',    status:'unique', origin:'AI-generated'},
+    {name:'reports:file_generation_initiated',status:'unique', origin:'AI-generated'},
+    {name:'export:download_queue_added',      status:'unique', origin:'AI-generated'},
+    {name:'reports:export_job_created',       status:'unique', origin:'AI-generated'},
+  ],
+  [
+    {name:'export:format_type_changed',      status:'unique', origin:'AI-generated'},
+    {name:'reports:output_format_selected',  status:'unique', origin:'AI-generated'},
+    {name:'export:csv_option_chosen',        status:'unique', origin:'AI-generated'},
+    {name:'export:pdf_option_chosen',        status:'unique', origin:'AI-generated'},
+    {name:'reports:format_dropdown_changed', status:'unique', origin:'AI-generated'},
+  ],
+  [
+    {name:'export:file_ready_downloaded',   status:'unique', origin:'AI-generated'},
+    {name:'reports:download_link_clicked',  status:'unique', origin:'AI-generated'},
+    {name:'export:success_modal_shown',     status:'unique', origin:'AI-generated'},
+    {name:'export:completion_confirmed',    status:'unique', origin:'AI-generated'},
+    {name:'reports:export_success_received',status:'unique', origin:'AI-generated'},
+  ],
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let S = {
+  phase: 'scanning',
+  actions: [],
+  confirmed: [],
+  openGroups: [0, 1, 2],
+  editing: null,       // {gi, ci}
+  editVals: {},        // key: `${gi}-${ci}`
+  customVals: {},      // key: gi
+  selectedCandidates: {}, // key: gi => ci
+  skipped: false,
+};
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m+1}, (_, i) =>
+    Array.from({length: n+1}, (_, j) => i===0 ? j : j===0 ? i : 0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function adaptiveThreshold(name) {
+  const l = name.length;
+  return l < 20 ? 1 : l < 40 ? 2 : 3;
+}
+function checkDup(name) {
+  if (POSTHOG_EVENTS.includes(name)) return {status:'duplicate', matchedEvent:name};
+  const t = adaptiveThreshold(name);
+  const sim = POSTHOG_EVENTS.find(e => lev(name, e) <= t);
+  if (sim) return {status:'similar', matchedEvent:sim};
+  return {status:'unique'};
+}
+function validateFmt(name) {
+  if (!name || name.length < 10)                   return 'TOO_SHORT';
+  if (name.length > 80)                            return 'TOO_LONG';
+  if (!name.includes(':'))                         return 'MISSING_COLON';
+  if (/[^a-z0-9_:]/.test(name))                   return 'INVALID_CHARS';
+  if ((name.match(/:/g)||[]).length > 1)           return 'INVALID_CHARS';
+  const [cat, rest] = name.split(':');
+  if (!cat || !rest)                               return 'MISSING_COLON';
+  if (rest.split('_').filter(Boolean).length < 2)  return 'MISSING_ACTION';
+  if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*:[a-z][a-z0-9]*(_[a-z0-9]+)+$/.test(name)) return 'BAD_FORMAT';
+  return null;
+}
+const FMT_MSGS = {
+  MISSING_COLON: 'Missing category — use format: category:object_action',
+  INVALID_CHARS: 'Only letters, numbers, underscores, and one colon allowed',
+  TOO_SHORT:     'Too short — minimum 10 characters',
+  TOO_LONG:      'Too long — maximum 80 characters',
+  MISSING_ACTION:'Need at least two tokens after colon: object_action',
+  BAD_FORMAT:    'Use lowercase letters and underscores only',
+};
+function getSuggestions(prefix) {
+  if (!prefix) return [];
+  return CATEGORIES.filter(c => c.name.startsWith(prefix.toLowerCase())).slice(0, 6);
+}
+function isCanonical(cat) {
+  return CATEGORIES.some(c => c.name === cat.toLowerCase().trim());
+}
+function nearestCanon(cat) {
+  return CATEGORIES.find(c => c.name.startsWith(cat.toLowerCase().slice(0,3)))?.name || null;
+}
+function today() { return new Date().toISOString().split('T')[0]; }
+
+// ── Badge HTML ──────────────────────────────────────────────────────────────
+function badge(status, matchedEvent) {
+  const labels = {unique:'UNIQUE', similar:'SIMILAR', duplicate:'DUPLICATE', checking:'CHECKING'};
+  const cls    = {unique:'badge-unique', similar:'badge-similar', duplicate:'badge-duplicate', checking:'badge-checking'};
+  const extra  = (status==='similar'||status==='duplicate') && matchedEvent
+    ? ` <span style="font-weight:400;opacity:.7">· ${matchedEvent}</span>` : '';
+  return `<span class="badge ${cls[status]||'badge-checking'}">${labels[status]||'CHECKING'}${extra}</span>`;
+}
+function originBadge(origin) {
+  if (origin === 'Edited') return `<span class="badge badge-edited">Edited</span>`;
+  if (origin === 'Custom') return `<span class="badge badge-custom">Custom</span>`;
+  return '';
+}
+
+// ── Autocomplete HTML ───────────────────────────────────────────────────────
+function acDropdown(suggestions, onSelectFn) {
+  if (!suggestions.length) return '';
+  return `<div class="ac-dropdown">
+    ${suggestions.map(s => `
+      <div class="ac-item" onclick="${onSelectFn}('${s.name}')">
+        <span class="ac-item-name">${s.name}</span>
+        <span class="ac-item-domain">${s.domain}</span>
+        <span class="ac-item-desc">${s.description}</span>
+      </div>`).join('')}
+    <div class="ac-footer" onclick="suggestCategory()">+ Suggest a new category</div>
+  </div>`;
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  const pb = document.getElementById('panel-body');
+  if (!pb) return;
+
+  if (S.phase === 'scanning') {
+    pb.innerHTML = `
+      <div class="scanning-state">
+        <div class="scanning-icon">⚡</div>
+        <div class="scanning-text">Scanning Story for trackable events</div>
+        <div class="scanning-sub">Reading ticket title, description, labels and components…</div>
+      </div>`;
+    return;
+  }
+
+  if (S.skipped) {
+    pb.innerHTML = `
+      <div class="skipped-panel">
+        <div class="skipped-icon">—</div>
+        <div class="skipped-text">Marked as not applicable.<br>No analytics events for this Story.</div>
+        <button class="undo-link" onclick="undoSkip()">Undo</button>
+      </div>
+      ${renderSummary()}`;
+    return;
+  }
+
+  let html = '';
+  const pending = S.actions.filter(a => !a.confirmed).length;
+  html += `<div class="section-label">Detected actions — ${pending} pending</div>`;
+
+  S.actions.forEach((action, gi) => {
+    const isOpen = S.openGroups.includes(gi);
+    const isDone = !!action.confirmed;
+
+    html += `<div class="action-group">
+      <div class="action-header" onclick="toggleGroup(${gi})">
+        <div class="action-dot ${isDone?'done':''}"></div>
+        <span class="action-label-text">${action.label}</span>
+        ${isDone ? `<span class="done-pill">DONE</span>` : ''}
+        <span class="chevron ${isOpen?'open':''}">▼</span>
+      </div>`;
+
+    if (isOpen) {
+      if (isDone) {
+        html += `<div class="confirmed-name-row">
+          <span class="confirmed-mono">${action.confirmed.name}</span>
+          ${originBadge(action.confirmed.origin)}
+          <span class="badge badge-unique">UNIQUE</span>
+        </div>`;
+      } else {
+        html += `<div class="candidates-body">`;
+        action.candidates.forEach((c, ci) => {
+          const isEditing = S.editing && S.editing.gi===gi && S.editing.ci===ci;
+          const isSel = S.selectedCandidates[gi] === ci;
+
+          if (isEditing) {
+            const val      = S.editVals[`${gi}-${ci}`] ?? c.name;
+            const fmtErr   = validateFmt(val);
+            const dupRes   = !fmtErr ? checkDup(val) : null;
+            const colonIdx = val.indexOf(':');
+            const prefix   = colonIdx === -1 ? val : val.slice(0, colonIdx);
+            const suggs    = colonIdx === -1 ? getSuggestions(prefix) : [];
+            const badCat   = colonIdx !== -1 && !isCanonical(val.slice(0, colonIdx));
+            const near     = badCat ? nearestCanon(val.slice(0, colonIdx)) : null;
+
+            html += `<div class="edit-wrap">
+              <div class="ac-wrap">
+                <input class="edit-input${fmtErr?' err':''}" id="edit-${gi}-${ci}"
+                  value="${val.replace(/"/g,'&quot;')}"
+                  oninput="onEditInput(${gi},${ci},this.value)"
+                  onkeydown="onEditKey(event,${gi},${ci})"
+                  placeholder="category:object_action" />
+                ${acDropdown(suggs, `selectAcEdit_${gi}_${ci}`)}
+              </div>
+              ${badCat ? `<div class="unknown-cat-warn">Unrecognised category '${val.slice(0,colonIdx)}'${near?` — did you mean '${near}'?`:' — are you sure?'}</div>` : ''}
+              ${fmtErr ? `<div class="inline-error">${FMT_MSGS[fmtErr]}</div>` :
+                dupRes  ? `<div class="live-badge-row">${badge(dupRes.status, dupRes.matchedEvent)}</div>` : ''}
+              <div class="edit-actions">
+                <button class="btn-cancel" onclick="cancelEdit()">Cancel</button>
+                <button class="btn-apply" ${fmtErr?'disabled':''} onclick="applyEdit(${gi},${ci})">Apply</button>
+              </div>
+            </div>`;
+            // register dynamic selectAc handler
+            window[`selectAcEdit_${gi}_${ci}`] = function(name) { selectAcForEdit(name, gi, ci); };
+          } else {
+            html += `<div class="candidate-row${isSel?' selected':''}" onclick="selectCandidate(${gi},${ci})">
+              <div class="c-radio"><div class="c-radio-dot"></div></div>
+              <span class="c-name">${c.name}</span>
+              ${originBadge(c.origin)}
+              ${badge(c.status, c.matchedEvent)}
+              <button class="edit-icon-btn" onclick="startEdit(event,${gi},${ci})" title="Edit name">✎</button>
+            </div>`;
+          }
+        });
+
+        // Regen + custom
+        const customVal = S.customVals[gi] ?? '';
+        const customFmt = customVal ? validateFmt(customVal) : null;
+        const customDup = customVal && !customFmt ? checkDup(customVal) : null;
+        const customColon = customVal.indexOf(':');
+        const customPrefix = customColon === -1 ? customVal : customVal.slice(0, customColon);
+        const customSuggs  = customColon === -1 && customVal ? getSuggestions(customPrefix) : [];
+        const customBadCat = customColon !== -1 && !isCanonical(customVal.slice(0, customColon));
+
+        html += `</div>
+        <button class="regen-btn" onclick="regen(${gi})">↺ Regenerate 5 new names</button>
+        <div class="custom-section">
+          <div class="custom-label">Add custom event for this action</div>
+          <div class="ac-wrap">
+            <input class="edit-input${customFmt&&customVal?' err':''}" value="${customVal.replace(/"/g,'&quot;')}"
+              oninput="onCustomInput(${gi},this.value)"
+              placeholder="category:object_action" />
+            ${acDropdown(customSuggs, `selectAcCustom_${gi}`)}
+          </div>
+          ${customBadCat ? `<div class="unknown-cat-warn">Unrecognised category — are you sure?</div>` : ''}
+          ${customFmt && customVal ? `<div class="inline-error">${FMT_MSGS[customFmt]}</div>` :
+            customDup ? `<div class="live-badge-row">${badge(customDup.status, customDup.matchedEvent)}</div>` : ''}
+          ${customVal && !customFmt ? `
+            <button class="confirm-main-btn" style="margin-top:8px" onclick="confirmCustom(${gi})">
+              Confirm '${customVal}'
+            </button>` : ''}
+        </div>`;
+        window[`selectAcCustom_${gi}`] = function(name) { selectAcForCustom(name, gi); };
+
+        // Confirm strip for selected candidate
+        const sel = S.selectedCandidates[gi];
+        if (sel !== undefined) {
+          const sc = action.candidates[sel];
+          html += `<div class="confirm-strip">
+            <button class="confirm-main-btn" onclick="openConfirmModal(${gi})">
+              Confirm '${sc.name}'
+            </button>
+          </div>`;
+        }
+      }
+    }
+    html += `</div>`;
+  });
+
+  html += renderSummary();
+  pb.innerHTML = html;
+
+  // Focus edit input after render
+  if (S.editing) {
+    const el = document.getElementById(`edit-${S.editing.gi}-${S.editing.ci}`);
+    if (el) { const len = el.value.length; el.focus(); el.setSelectionRange(len, len); }
+  }
+}
+
+function renderSummary() {
+  const count = S.confirmed.length;
+  let html = `<div class="summary-panel">
+    <div class="summary-header">
+      <span class="summary-title">Confirmed events</span>
+      <span class="summary-count">${count}</span>
+    </div>
+    <div class="summary-body">`;
+  if (!count) {
+    html += `<div class="summary-empty">No events confirmed yet on this Story.</div>`;
+  } else {
+    S.confirmed.forEach(ev => {
+      html += `<div class="summary-item">
+        <div class="summary-item-name">${ev.eventName}</div>
+        <div class="summary-item-meta">${ev.actionLabel} · ${ev.origin} · ${ev.date}</div>
+      </div>`;
+    });
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+// ── Interactions ────────────────────────────────────────────────────────────
+function toggleGroup(gi) {
+  const idx = S.openGroups.indexOf(gi);
+  if (idx === -1) S.openGroups.push(gi);
+  else S.openGroups.splice(idx, 1);
+  render();
+}
+function selectCandidate(gi, ci) {
+  S.selectedCandidates[gi] = S.selectedCandidates[gi] === ci ? undefined : ci;
+  render();
+}
+function startEdit(e, gi, ci) {
+  e.stopPropagation();
+  S.editing = {gi, ci};
+  if (!S.editVals[`${gi}-${ci}`]) S.editVals[`${gi}-${ci}`] = S.actions[gi].candidates[ci].name;
+  render();
+}
+function cancelEdit() { S.editing = null; render(); }
+function applyEdit(gi, ci) {
+  const val = S.editVals[`${gi}-${ci}`];
+  if (!val || validateFmt(val)) return;
+  const dup = checkDup(val);
+  S.actions[gi].candidates[ci] = {name: val, status: dup.status, matchedEvent: dup.matchedEvent, origin: 'Edited'};
+  S.editing = null;
+  S.selectedCandidates[gi] = ci;
+  render();
+}
+function onEditInput(gi, ci, val) {
+  S.editVals[`${gi}-${ci}`] = val;
+  render();
+}
+function onEditKey(e, gi, ci) {
+  if (e.key === 'Escape') cancelEdit();
+  if (e.key === 'Enter') applyEdit(gi, ci);
+}
+function selectAcForEdit(name, gi, ci) {
+  S.editVals[`${gi}-${ci}`] = name + ':';
+  render();
+}
+function onCustomInput(gi, val) { S.customVals[gi] = val; render(); }
+function selectAcForCustom(name, gi) { S.customVals[gi] = name + ':'; render(); }
+function regen(gi) {
+  S.actions[gi].candidates = JSON.parse(JSON.stringify(REGEN_BATCHES[gi] || S.actions[gi].candidates));
+  S.selectedCandidates[gi] = undefined;
+  render();
+  showToast('5 new names generated');
+}
+function suggestCategory() {
+  showModal(`
+    <div class="modal-title">Suggest a new category</div>
+    <div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;line-height:1.6">
+      Adding a category creates a Jira ticket in the NameGen backlog for the team to review and approve.
+    </div>
+    <input class="edit-input" id="new-cat-input" placeholder="e.g. onboarding_v2" style="margin-bottom:12px" />
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal-confirm" onclick="submitCategoryRequest()">Submit request</button>
+    </div>`);
+}
+function submitCategoryRequest() {
+  const val = document.getElementById('new-cat-input')?.value;
+  closeModal();
+  if (val) showToast(`Category request '${val}' submitted`);
+}
+
+// ── Confirm flows ────────────────────────────────────────────────────────────
+function openConfirmModal(gi) {
+  const sel = S.selectedCandidates[gi];
+  if (sel === undefined) return;
+  const c = S.actions[gi].candidates[sel];
+  showConfirmDialog(gi, c.name, c.origin, c.status === 'duplicate', c.matchedEvent);
+}
+function confirmCustom(gi) {
+  const name = S.customVals[gi];
+  if (!name || validateFmt(name)) return;
+  const dup = checkDup(name);
+  showConfirmDialog(gi, name, 'Custom', dup.status === 'duplicate', dup.matchedEvent);
+}
+function showConfirmDialog(gi, name, origin, isDup, matchedEvent) {
+  const action = S.actions[gi];
+  showModal(`
+    <div class="modal-title">Confirm event name</div>
+    <div class="modal-event-name">${name}</div>
+    <div class="modal-meta">
+      Action: ${action.label}<br>
+      Origin: ${origin}
+    </div>
+    ${isDup ? `
+      <div class="dup-warning-box">
+        This name already exists in PostHog as <strong>${matchedEvent}</strong>. Confirming will create a duplicate.
+      </div>
+      <label class="dup-ack-row">
+        <input type="checkbox" id="dup-ack" onchange="dupAckChange()">
+        I understand this is a duplicate and want to proceed
+      </label>` : ''}
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal-confirm" id="confirm-ok" ${isDup?'disabled':''} 
+        onclick="doConfirm(${gi},'${name.replace(/'/g,"\\'")}','${origin}')">
+        Confirm
+      </button>
+    </div>`);
+}
+function dupAckChange() {
+  const cb = document.getElementById('dup-ack');
+  const btn = document.getElementById('confirm-ok');
+  if (btn) btn.disabled = !cb.checked;
+}
+function doConfirm(gi, name, origin) {
+  closeModal();
+  S.actions[gi].confirmed = {name, origin, status:'unique'};
+  S.confirmed.push({eventName: name, actionLabel: S.actions[gi].label, origin, date: today()});
+  S.customVals[gi] = '';
+  S.selectedCandidates[gi] = undefined;
+  if (!S.openGroups.includes(gi)) S.openGroups.push(gi);
+  addJiraComment(name, S.actions[gi].label, origin);
+  render();
+  showToast(`Event confirmed: ${name}`);
+}
+function addJiraComment(name, label, origin) {
+  const list = document.getElementById('comments-list');
+  if (!list) return;
+  const d = document.createElement('div');
+  d.className = 'jira-comment';
+  d.innerHTML = `
+    <div class="jira-comment-avatar" style="background:#EBF2FF;color:#1e429f;font-size:9px;font-weight:700">NG</div>
+    <div class="jira-comment-body namegen-comment">
+      <span class="namegen-comment-tag">[NameGen]</span>
+      Event confirmed: <span class="namegen-comment-code">${name}</span>
+      for '${label}' (${origin}) — maya@company.com on ${today()}
+    </div>`;
+  list.appendChild(d);
+  d.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+// ── Skip ─────────────────────────────────────────────────────────────────────
+function handleSkip() {
+  showModal(`
+    <div class="modal-title">Mark as not applicable?</div>
+    <div style="font-size:13px;color:var(--gray-500);margin:0 0 16px;line-height:1.6">
+      Mark this Story as having no analytics events to track. No comment will be posted.
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal-confirm" onclick="confirmSkip()">Mark as not applicable</button>
+    </div>`);
+}
+function confirmSkip() { closeModal(); S.skipped = true; render(); }
+function undoSkip()    { S.skipped = false; render(); }
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function showModal(html) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-overlay" onclick="overlayClose(event)">
+    <div class="modal" onclick="event.stopPropagation()">${html}</div>
+  </div>`;
+}
+function overlayClose(e) { if (e.target === e.currentTarget) closeModal(); }
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  const existing = document.getElementById('toast');
+  if (existing) existing.remove();
+  if (toastTimer) clearTimeout(toastTimer);
+  const t = document.createElement('div');
+  t.id = 'toast'; t.className = 'toast';
+  t.innerHTML = `<span class="toast-check">✓</span> ${msg}`;
+  document.body.appendChild(t);
+  toastTimer = setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 2500);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+render();
+setTimeout(() => {
+  S.phase = 'results';
+  S.actions = JSON.parse(JSON.stringify(INITIAL_ACTIONS));
+  render();
+}, 1600);
+</script>
+</body>
+</html>
